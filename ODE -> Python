@@ -1,0 +1,208 @@
+#ODE file converted to python --- solver method -- RK4
+import numpy as np
+import matplotlib.pyplot as plt
+
+# ======================================================
+# Parameters
+# ======================================================
+
+nip3r = 1000
+
+alpha = 1.0
+beta = 0.01
+gamma = 50
+nplc = 1e3
+delta = 0.10
+
+a1 = 1.0
+b1 = 0.1
+
+# Ca second site
+a2 = 0.10
+b2 = 0.10
+
+# IP3 site
+a3 = 1.0
+b3 = 0.1
+
+mu = 50
+V = 4e4
+
+# IP3 pulse
+pulsamp = 50
+pulst0 = 20
+pulsdur = 1
+
+# ======================================================
+# Pulse Function
+# ======================================================
+
+def pulse(t):
+    if pulst0 <= t <= pulst0 + pulsdur:
+        return 1.0
+    return 0.0
+
+# ======================================================
+# Differential Equations
+# ======================================================
+
+def derivatives(t, y):
+
+    Ca, IP3, x000, x010, x100, x110, x001, x011, x101 = y
+
+    # Conservation relation
+    x111 = nip3r - (
+        x000 + x010 + x100 + x110 +
+        x001 + x011 + x101
+    )
+
+    f = pulse(t)
+
+    # Calcium
+    dCa = (
+        -alpha * Ca
+        + gamma
+        - a1 / V * Ca * (x000 + x010 + x001 + x011)
+        - a2 / V * Ca * (x000 + x100 + x001 + x101)
+        + b1 * (x100 + x110 + x101 + x111)
+        + b2 * (x010 + x110 + x011 + x111)
+        + mu * x101
+    )
+
+    # IP3
+    dIP3 = (
+        pulsamp * f
+        + delta / V * nplc * Ca
+        - beta * IP3
+        - a3 / V * IP3 * (x000 + x010 + x100 + x110)
+        + b3 * (x001 + x101 + x011 + x111)
+    )
+
+    # Receptor states
+
+    dx000 = (
+        -(a1/V*Ca + a2/V*Ca + a3/V*IP3) * x000
+        + b1*x100
+        + b2*x010
+        + b3*x001
+    )
+
+    dx010 = (
+        -(a1/V*Ca + b2 + a3/V*IP3) * x010
+        + b1*x110
+        + a2/V*Ca*x000
+        + b3*x011
+    )
+
+    dx100 = (
+        -(b1 + a2/V*Ca + a3/V*IP3) * x100
+        + a1/V*Ca*x000
+        + b2*x110
+        + b3*x101
+    )
+
+    dx110 = (
+        -(b1 + b2 + a3/V*IP3) * x110
+        + a1/V*Ca*x010
+        + a2/V*Ca*x100
+        + b3*x111
+    )
+
+    dx001 = (
+        -(a1/V*Ca + a2/V*Ca + b3) * x001
+        + b1*x101
+        + b2*x011
+        + a3/V*IP3*x000
+    )
+
+    dx011 = (
+        -(a1/V*Ca + b2 + b3) * x011
+        + b1*x111
+        + a2/V*Ca*x001
+        + a3/V*IP3*x010
+    )
+
+    dx101 = (
+        -(b1 + a2/V*Ca + b3) * x101
+        + a1/V*Ca*x001
+        + b2*x111
+        + a3/V*IP3*x100
+    )
+
+    return np.array([
+        dCa,
+        dIP3,
+        dx000,
+        dx010,
+        dx100,
+        dx110,
+        dx001,
+        dx011,
+        dx101
+    ])
+
+# ======================================================
+# RK4 Solver
+# ======================================================
+
+def rk4_step(fun, t, y, dt):
+
+    k1 = fun(t, y)
+    k2 = fun(t + dt/2, y + dt*k1/2)
+    k3 = fun(t + dt/2, y + dt*k2/2)
+    k4 = fun(t + dt, y + dt*k3)
+
+    return y + dt*(k1 + 2*k2 + 2*k3 + k4)/6
+
+# ======================================================
+# Simulation
+# ======================================================
+
+t0 = 0
+tf = 2000
+dt = 0.1
+
+time = np.arange(t0, tf + dt, dt)
+
+# Initial conditions
+y = np.array([
+    50,      # Ca
+    15,      # IP3
+    1000,    # x000
+    0,       # x010
+    0,       # x100
+    0,       # x110
+    0,       # x001
+    0,       # x011
+    0        # x101
+], dtype=float)
+
+solution = np.zeros((len(time), len(y)))
+
+for i, t in enumerate(time):
+    solution[i] = y
+    y = rk4_step(derivatives, t, y, dt)
+
+# ======================================================
+# Recover x111
+# ======================================================
+
+x111 = nip3r - (
+    solution[:,2] + solution[:,3] +
+    solution[:,4] + solution[:,5] +
+    solution[:,6] + solution[:,7] +
+    solution[:,8]
+)
+
+# ======================================================
+# Plot
+# ======================================================
+
+plt.figure(figsize=(10,5))
+plt.plot(time, solution[:,0], label='Ca')
+plt.plot(time, solution[:,1], label='IP3')
+plt.xlabel("Time")
+plt.ylabel("Concentration")
+plt.legend()
+plt.grid(True)
+plt.show()
